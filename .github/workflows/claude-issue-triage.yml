@@ -117,6 +117,14 @@ jobs:
                   --repo ${{ github.repository }} \
                   --body '<diagnostic>'
 
+            The diagnostic comment MUST be valid GitHub Flavored Markdown (GFM):
+            - Use `##` and `###` for headings (no HTML tags).
+            - Use `-` for bullet lists and leave a blank line before each list.
+            - Wrap inline code with backticks and multi-line code with triple-backtick fences.
+            - Separate every section with a blank line so GitHub renders them as distinct blocks.
+            - Do NOT escape characters unnecessarily; use plain UTF-8 text inside the body string.
+            - The `---` horizontal rule must be on its own line with blank lines above and below.
+
             The diagnostic comment MUST use this exact structure (in Spanish):
 
             ---
