@@ -1,0 +1,157 @@
+name: Claude Issue Triage
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  triage:
+    # Skip bot-authored events to avoid re-trigger loops.
+    # Skip issues that explicitly mention @claude — claude.yml handles those.
+    if: |
+      github.event.sender.type != 'Bot' &&
+      !contains(github.event.issue.body || '', '@claude') &&
+      !contains(github.event.issue.title || '', '@claude')
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Ensure standard labels exist
+        env:
+          GH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          # Type labels
+          gh label create "bug"           --color "d73a4a" --description "Something isn't working"                              --force
+          gh label create "feature"       --color "a2eeef" --description "New feature or enhancement request"                  --force
+          gh label create "question"      --color "d876e3" --description "Further information is requested"                    --force
+          gh label create "docs"          --color "0075ca" --description "Improvements or additions to documentation"          --force
+
+          # Game-area labels
+          gh label create "area:rendering"  --color "bfd4f2" --description "Canvas drawing, draw() functions"                  --force
+          gh label create "area:input"      --color "bfd4f2" --description "Keyboard / touch event handling"                   --force
+          gh label create "area:scoring"    --color "bfd4f2" --description "Score, lines cleared, level progression"           --force
+          gh label create "area:rotation"   --color "bfd4f2" --description "rotateCW / tryRotate / wall-kick logic"            --force
+          gh label create "area:collision"  --color "bfd4f2" --description "collide() / lockPiece() / merge()"                 --force
+          gh label create "area:ui"         --color "bfd4f2" --description "HUD, overlay, pause/game-over screens"             --force
+          gh label create "area:audio"      --color "bfd4f2" --description "Sound effects or music"                            --force
+
+          # Priority labels
+          gh label create "priority:high"   --color "e4e669" --description "High priority"                                     --force
+          gh label create "priority:medium" --color "f9d0c4" --description "Medium priority"                                   --force
+          gh label create "priority:low"    --color "e4e669" --description "Low priority"                                      --force
+
+          # Triage-state labels
+          gh label create "needs-triage"    --color "ededed" --description "Awaiting automated triage"                         --force
+          gh label create "triaged"         --color "0e8a16" --description "Triage complete — labels and diagnosis applied"    --force
+
+          # Mark the issue as pending triage while Claude runs
+          gh issue edit ${{ github.event.issue.number }} \
+            --repo ${{ github.repository }} \
+            --add-label "needs-triage"
+
+      - name: Run Claude Issue Triage
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--allowedTools "Bash(gh issue *),Bash(gh label *),Bash(gh api *),Read,Grep,Glob"'
+          prompt: |
+            You are an expert software engineer doing automated issue triage for a Tetris game project.
+            Repository: ${{ github.repository }}
+            Issue number: ${{ github.event.issue.number }}
+            Event type: ${{ github.event.action }} (opened = new issue, edited = updated issue)
+
+            ## Your tasks
+
+            ### 1. Read the issue
+            Run:
+              gh issue view ${{ github.event.issue.number }} --repo ${{ github.repository }}
+
+            ### 2. Read the codebase
+            The game is three plain files — read all three to understand the code:
+              - game.js   (all game logic: COLS, ROWS, BLOCK, COLORS, PIECES, board state, loop, spawn, lockPiece, clearLines, rotateCW, tryRotate, collide, ghostY, draw)
+              - index.html (canvas#board 300×600px, canvas#next-canvas 120×120px, HUD panel, overlay div)
+              - style.css  (dark/retro aesthetic, flexbox layout, backdrop-filter overlays)
+
+            ### 3. Assign labels
+            Using ONLY the labels listed below, choose the most appropriate ones and assign them:
+
+            Type (choose exactly one):
+              bug, feature, question, docs
+
+            Area (choose one or more that apply — omit if truly not applicable):
+              area:rendering, area:input, area:scoring, area:rotation, area:collision, area:ui, area:audio
+
+            Priority (choose exactly one):
+              priority:high, priority:medium, priority:low
+
+            Run:
+              gh issue edit ${{ github.event.issue.number }} \
+                --repo ${{ github.repository }} \
+                --add-label "<label1>,<label2>,..."
+
+            ### 4. Post or update the diagnostic comment
+
+            If this is an 'edited' event, first check whether a previous triage comment from you already exists:
+              gh issue view ${{ github.event.issue.number }} \
+                --repo ${{ github.repository }} \
+                --comments --json comments \
+                --jq '.comments[] | select(.author.login == "github-actions[bot]" or (.body | startswith("## Diagnóstico"))) | .databaseId' \
+              | head -1
+
+            - If a previous comment ID is found, UPDATE it:
+                gh api repos/${{ github.repository }}/issues/comments/<comment_id> \
+                  --method PATCH \
+                  --field body='<escaped diagnostic>'
+
+            - If no previous comment exists, CREATE a new one:
+                gh issue comment ${{ github.event.issue.number }} \
+                  --repo ${{ github.repository }} \
+                  --body '<diagnostic>'
+
+            The diagnostic comment MUST use this exact structure (in Spanish):
+
+            ---
+            ## Diagnóstico automático — Issue #${{ github.event.issue.number }}
+
+            ### Resumen
+            <One-paragraph plain-language summary of what the issue is about.>
+
+            ### Categoría
+            <bug | feature | question | docs> — <short rationale>
+
+            ### Área afectada
+            <Which parts of the game are involved and why.>
+
+            ### Archivos y líneas sospechosas
+            <List relevant file paths and approximate line numbers or function names from the codebase. Be specific. If nothing is suspicious, say "N/A".>
+
+            ### Severidad
+            <high | medium | low> — <short rationale>
+
+            ### Hipótesis de causa
+            <For bugs: the most likely root cause based on the code. For features: the current gap. For questions: what information is missing.>
+
+            ### Enfoque sugerido para la solución
+            <Step-by-step approach. Reference specific functions or variables from the codebase (e.g. tryRotate in game.js, ghostY calculation). Keep it actionable.>
+
+            ### Criterios de aceptación
+            <Bullet list of observable conditions that would confirm the issue is resolved.>
+
+            ---
+            *Triaje generado automáticamente por Claude Code · ${{ github.event.action == 'edited' && 'Actualizado' || 'Creado' }} el ${{ github.event.issue.updated_at || github.event.issue.created_at }}*
+
+            ### 5. Finalize triage labels
+            Run:
+              gh issue edit ${{ github.event.issue.number }} \
+                --repo ${{ github.repository }} \
+                --remove-label "needs-triage" \
+                --add-label "triaged"
