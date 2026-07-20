@@ -80,10 +80,112 @@ const resumeBtn = document.getElementById('resume-btn');
 const controlsToggleBtn = document.getElementById('controls-toggle-btn');
 const pauseControlsList = document.getElementById('pause-controls-list');
 const startLevelSelect = document.getElementById('start-level-select');
+const nameForm = document.getElementById('name-form');
+const nameInput = document.getElementById('name-input');
+const saveScoreBtn = document.getElementById('save-score-btn');
+const overlayHighscores = document.getElementById('overlay-highscores');
+const startOverlay = document.getElementById('start-overlay');
+const startHighscores = document.getElementById('start-highscores');
+const playBtn = document.getElementById('play-btn');
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
 // Flag: si es true, el próximo spawn entrega la pieza 1×1 de recompensa (tras Tetris).
 let pendingReward;
+// true una vez que se pulsó "Jugar" — evita procesar input de teclado antes de arrancar.
+let gameStarted = false;
+// Combo (líneas limpiadas de una sola vez) más alto conseguido en la partida en curso.
+let sessionBestCombo = 0;
+
+// --- Tabla de records local (localStorage) ---
+const HIGHSCORES_KEY = 'tetris.highscores';
+const HIGHSCORE_STATS_KEY = 'tetris.highscore-stats';
+const MAX_HIGHSCORES = 5;
+
+function loadHighscores() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HIGHSCORES_KEY));
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHighscores(list) {
+  localStorage.setItem(HIGHSCORES_KEY, JSON.stringify(list));
+}
+
+function loadHighscoreStats() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HIGHSCORE_STATS_KEY));
+    return raw && typeof raw === 'object'
+      ? { bestCombo: raw.bestCombo || 0, maxLines: raw.maxLines || 0 }
+      : { bestCombo: 0, maxLines: 0 };
+  } catch {
+    return { bestCombo: 0, maxLines: 0 };
+  }
+}
+
+function saveHighscoreStats(stats) {
+  localStorage.setItem(HIGHSCORE_STATS_KEY, JSON.stringify(stats));
+}
+
+// ¿La puntuación entra en el top 5?
+function qualifiesForHighscore(list, points) {
+  if (points <= 0) return false;
+  if (list.length < MAX_HIGHSCORES) return true;
+  return points > list[list.length - 1].score;
+}
+
+// Inserta la entrada, reordena por puntuación descendente y recorta al top 5.
+function insertHighscore(list, entry) {
+  list.push(entry);
+  list.sort((a, b) => b.score - a.score);
+  list.length = Math.min(list.length, MAX_HIGHSCORES);
+  return list;
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// Renderiza la tabla de records + estadísticas globales dentro de `container`.
+// `highlightIndex` (opcional) marca la fila recién conseguida.
+function renderHighscores(container, highlightIndex) {
+  const list = loadHighscores();
+  const stats = loadHighscoreStats();
+  const rows = list.length
+    ? list.map((entry, i) => `
+        <tr class="${i === highlightIndex ? 'hs-highlight' : ''}">
+          <td>${i + 1}</td>
+          <td>${escapeHtml(entry.name)}</td>
+          <td>${entry.score.toLocaleString()}</td>
+        </tr>`).join('')
+    : '<tr><td colspan="3" class="hs-empty">Sin récords todavía</td></tr>';
+
+  container.innerHTML = `
+    <span class="label">RÉCORDS</span>
+    <table class="hs-table">
+      <thead><tr><th>#</th><th>Nombre</th><th>Puntos</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="hs-stats">
+      <span>Mejor combo: <strong>${stats.bestCombo}</strong></span>
+      <span>Líneas máx: <strong>${stats.maxLines}</strong></span>
+    </div>
+    <button class="reset-scores-btn" type="button">Reiniciar récords</button>
+  `;
+}
+
+function resetHighscores() {
+  localStorage.removeItem(HIGHSCORES_KEY);
+  localStorage.removeItem(HIGHSCORE_STATS_KEY);
+  renderHighscores(startHighscores, -1);
+  renderHighscores(overlayHighscores, -1);
+}
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
@@ -168,6 +270,7 @@ function clearLines() {
     score += (LINE_SCORES[cleared] || 0) * level;
     level = Math.floor(lines / 10) + 1;
     dropInterval = Math.max(100, 1000 - (level - 1) * 90);
+    if (cleared > sessionBestCombo) sessionBestCombo = cleared;
     // Tetris (4 líneas simultáneas) → recompensa: la próxima pieza es la 1×1.
     if (cleared === 4) pendingReward = true;
     updateHUD();
@@ -291,14 +394,46 @@ function drawNext() {
 function endGame() {
   gameOver = true;
   cancelAnimationFrame(animId);
+
+  // Actualiza métricas globales (persisten aunque la puntuación no entre al top 5).
+  const stats = loadHighscoreStats();
+  if (sessionBestCombo > stats.bestCombo) stats.bestCombo = sessionBestCombo;
+  if (lines > stats.maxLines) stats.maxLines = lines;
+  saveHighscoreStats(stats);
+
   overlayTitle.textContent = 'GAME OVER';
   overlayScore.textContent = `Puntuación: ${score.toLocaleString()}`;
   pauseMenu.classList.add('hidden'); // el menú de pausa no aplica en game over
   overlay.classList.remove('hidden');
+
+  const list = loadHighscores();
+  if (qualifiesForHighscore(list, score)) {
+    nameForm.classList.remove('hidden');
+    overlayHighscores.classList.add('hidden');
+    nameInput.value = '';
+    setTimeout(() => nameInput.focus(), 0);
+  } else {
+    nameForm.classList.add('hidden');
+    overlayHighscores.classList.remove('hidden');
+    renderHighscores(overlayHighscores, -1);
+  }
+}
+
+// Guarda el nombre introducido tras un nuevo récord y refresca la tabla con el resaltado.
+function saveScoreName() {
+  const raw = nameInput.value.trim().slice(0, 12);
+  const name = raw || 'Jugador';
+  const entry = { name, score, date: new Date().toISOString() };
+  const list = insertHighscore(loadHighscores(), entry);
+  saveHighscores(list);
+
+  nameForm.classList.add('hidden');
+  overlayHighscores.classList.remove('hidden');
+  renderHighscores(overlayHighscores, list.indexOf(entry));
 }
 
 function togglePause() {
-  if (gameOver) return;
+  if (!gameStarted || gameOver) return;
   paused = !paused;
   if (!paused) {
     pauseMenu.classList.add('hidden');
@@ -310,6 +445,8 @@ function togglePause() {
     overlayTitle.textContent = 'PAUSA';
     overlayScore.textContent = '';
     pauseMenu.classList.remove('hidden');
+    nameForm.classList.add('hidden');
+    overlayHighscores.classList.add('hidden');
     overlay.classList.remove('hidden');
   }
 }
@@ -346,6 +483,7 @@ function init() {
   paused = false;
   gameOver = false;
   pendingReward = false; // reinicia la recompensa de Tetris al comenzar o reiniciar
+  sessionBestCombo = 0;
   dropInterval = Math.max(100, 1000 - (level - 1) * 90);
   dropAccum = 0;
   lastTime = performance.now();
@@ -356,13 +494,16 @@ function init() {
   pauseMenu.classList.add('hidden');
   pauseControlsList.classList.add('hidden');
   controlsToggleBtn.textContent = 'Ver controles';
+  nameForm.classList.add('hidden');
+  overlayHighscores.classList.add('hidden');
+  gameStarted = true;
   cancelAnimationFrame(animId);
   animId = requestAnimationFrame(loop);
 }
 
 document.addEventListener('keydown', e => {
   if (e.code === 'KeyP' || e.code === 'Escape') { togglePause(); return; }
-  if (paused || gameOver) return;
+  if (!gameStarted || paused || gameOver) return;
   switch (e.code) {
     case 'ArrowLeft':
       if (!collide(current.shape, current.x - 1, current.y)) current.x--;
@@ -415,7 +556,22 @@ startLevelSelect.addEventListener('change', () => {
   localStorage.setItem('tetris.startLevel', startLevelSelect.value);
 });
 
-applyTheme(localStorage.getItem('theme') || 'dark');
 startLevelSelect.value = String(getStartLevel());
 
-init();
+playBtn.addEventListener('click', () => {
+  startOverlay.classList.add('hidden');
+  init();
+});
+
+saveScoreBtn.addEventListener('click', saveScoreName);
+nameInput.addEventListener('keydown', e => {
+  if (e.code === 'Enter') saveScoreName();
+});
+
+// Delegación: el botón "Reiniciar récords" se re-renderiza dentro de las tablas.
+document.addEventListener('click', e => {
+  if (e.target.classList.contains('reset-scores-btn')) resetHighscores();
+});
+
+applyTheme(localStorage.getItem('theme') || 'dark');
+renderHighscores(startHighscores, -1);

@@ -82,7 +82,25 @@
           </ul>
         </div>
 
+        <div id="name-form" class="name-form hidden">
+          <label for="name-input">¡Nuevo récord! Escribe tu nombre:</label>
+          <div class="name-form-row">
+            <input type="text" id="name-input" maxlength="12" placeholder="Jugador" autocomplete="off" />
+            <button id="save-score-btn">Guardar</button>
+          </div>
+        </div>
+
+        <div id="overlay-highscores" class="highscores hidden"></div>
+
         <button id="restart-btn">Reiniciar</button>
+      </div>
+    </div>
+
+    <div id="start-overlay" class="overlay">
+      <div class="overlay-box">
+        <p id="start-title">TETRIS</p>
+        <div id="start-highscores" class="highscores"></div>
+        <button id="play-btn">Jugar</button>
       </div>
     </div>
   </div>
