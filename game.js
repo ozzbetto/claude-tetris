@@ -55,6 +55,34 @@ const PIECES = [
 
 const LINE_SCORES = [0, 100, 300, 500, 800];
 
+// --- Skins visuales del tablero (ortogonal al tema claro/oscuro de la página) ---
+// Cada skin define su propia paleta de colores (o reutiliza COLORS) y se pinta
+// mediante una función dedicada en SKIN_PAINTERS, seleccionada según `currentSkin`.
+const PASTEL_COLORS = [
+  null,
+  '#a8dadc', //  1: I
+  '#ffe8a3', //  2: O
+  '#d8bbf0', //  3: T
+  '#b8e6b0', //  4: S
+  '#f4b6b6', //  5: Z
+  '#a9c9e8', //  6: J
+  '#f9cf9a', //  7: L
+  '#a3e0e6', //  8: + (cruz)
+  '#c9b3e8', //  9: U
+  '#b0e0b6', // 10: Y (pentominó)
+  '#fff2b0', // 11: 1×1 (recompensa)
+  '#f0a8a8', // 12: 3×3 hueca (reto)
+];
+
+const SKINS = {
+  retro:  { label: 'Retro',     colors: COLORS },
+  neon:   { label: 'Neon',      colors: COLORS },
+  pastel: { label: 'Pastel',    colors: PASTEL_COLORS },
+  pixel:  { label: 'Pixel art', colors: COLORS },
+};
+
+let currentSkin = 'retro';
+
 // --- Configuración de piezas especiales ---
 // Probabilidad de que aparezca una pieza de reto en lugar de una estándar (0–1).
 const CHALLENGE_RATE  = 0.05;
@@ -75,6 +103,7 @@ const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeBtn = document.getElementById('theme-btn');
+const skinSelect = document.getElementById('skin-select');
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
 // Flag: si es true, el próximo spawn entrega la pieza 1×1 de recompensa (tras Tetris).
@@ -218,16 +247,105 @@ function updateHUD() {
   levelEl.textContent = level;
 }
 
-function drawBlock(context, x, y, colorIndex, size, alpha) {
-  if (!colorIndex) return;
-  const color = COLORS[colorIndex];
-  context.globalAlpha = alpha ?? 1;
+// --- Pintores por skin ---
+// Cada función recibe (context, x, y, color, size) en coordenadas de celda
+// y pinta un único bloque; drawBlock() elige cuál usar según currentSkin.
+
+function paintRetroBlock(context, x, y, color, size) {
   context.fillStyle = color;
   context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
   // highlight
   context.fillStyle = 'rgba(255,255,255,0.12)';
   context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
-  context.globalAlpha = 1;
+}
+
+function paintNeonBlock(context, x, y, color, size) {
+  const px = x * size + 1;
+  const py = y * size + 1;
+  const s = size - 2;
+  // fondo oscuro de la celda para que el glow resalte
+  context.fillStyle = '#0a0a12';
+  context.fillRect(px, py, s, s);
+  context.shadowBlur = size * 0.6;
+  context.shadowColor = color;
+  context.fillStyle = color;
+  context.fillRect(px + 2, py + 2, s - 4, s - 4);
+  context.shadowBlur = 0;
+  // brillo interior
+  context.fillStyle = 'rgba(255,255,255,0.25)';
+  context.fillRect(px + 2, py + 2, s - 4, 3);
+}
+
+function paintPastelBlock(context, x, y, color, size) {
+  const px = x * size + 1;
+  const py = y * size + 1;
+  const s = size - 2;
+  const radius = Math.min(6, s / 4);
+
+  const roundedPath = (rx, ry, rw, rh, rr) => {
+    context.beginPath();
+    if (context.roundRect) {
+      context.roundRect(rx, ry, rw, rh, rr);
+    } else {
+      // esquinas redondeadas dibujadas manualmente (navegadores sin roundRect)
+      context.moveTo(rx + rr, ry);
+      context.arcTo(rx + rw, ry, rx + rw, ry + rh, rr);
+      context.arcTo(rx + rw, ry + rh, rx, ry + rh, rr);
+      context.arcTo(rx, ry + rh, rx, ry, rr);
+      context.arcTo(rx, ry, rx + rw, ry, rr);
+      context.closePath();
+    }
+  };
+
+  context.fillStyle = color;
+  roundedPath(px, py, s, s, radius);
+  context.fill();
+
+  // brillo suave superior
+  context.fillStyle = 'rgba(255,255,255,0.35)';
+  roundedPath(px + 2, py + 2, s - 4, Math.max(1, s * 0.35), radius / 2);
+  context.fill();
+}
+
+function paintPixelBlock(context, x, y, color, size) {
+  const px = x * size + 1;
+  const py = y * size + 1;
+  const s = size - 2;
+  const half = s / 2;
+
+  context.fillStyle = color;
+  context.fillRect(px, py, s, s);
+
+  // textura tipo pixel-art: cuadrícula interior 2×2 con sombreado alterno
+  context.fillStyle = 'rgba(0,0,0,0.15)';
+  context.fillRect(px, py, half, half);
+  context.fillRect(px + half, py + half, s - half, s - half);
+  context.fillStyle = 'rgba(255,255,255,0.18)';
+  context.fillRect(px + half, py, s - half, half);
+  context.fillRect(px, py + half, half, s - half);
+
+  // borde grueso oscuro para reforzar el look pixelado
+  context.strokeStyle = 'rgba(0,0,0,0.35)';
+  context.lineWidth = 2;
+  context.strokeRect(px + 1, py + 1, s - 2, s - 2);
+}
+
+const SKIN_PAINTERS = {
+  retro: paintRetroBlock,
+  neon: paintNeonBlock,
+  pastel: paintPastelBlock,
+  pixel: paintPixelBlock,
+};
+
+function drawBlock(context, x, y, colorIndex, size, alpha) {
+  if (!colorIndex) return;
+  const skin = SKINS[currentSkin] ? currentSkin : 'retro';
+  const color = SKINS[skin].colors[colorIndex];
+  const paint = SKIN_PAINTERS[skin] || paintRetroBlock;
+  context.save();
+  context.globalAlpha = alpha ?? 1;
+  paint(context, x, y, color, size);
+  context.restore();
 }
 
 function drawGrid() {
@@ -249,6 +367,11 @@ function drawGrid() {
 
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (currentSkin === 'neon') {
+    // fondo oscuro fijo para el tablero, independiente del tema de la página
+    ctx.fillStyle = '#05050a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
   drawGrid();
 
   // board
@@ -271,6 +394,10 @@ function draw() {
 
 function drawNext() {
   nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+  if (currentSkin === 'neon') {
+    nextCtx.fillStyle = '#05050a';
+    nextCtx.fillRect(0, 0, nextCanvas.width, nextCanvas.height);
+  }
   const shape = next.shape;
   // Rejilla dinámica: mínimo 4 celdas (piezas estándar), 5 para pentominós.
   // NB se ajusta para que la pieza más grande quepa siempre en el canvas.
@@ -377,12 +504,28 @@ function applyTheme(theme) {
   localStorage.setItem('theme', theme);
 }
 
+// Cambia la skin visual del tablero (canvas), sin afectar el tema de la página.
+// Persiste la elección y repinta de inmediato el tablero, la pieza fantasma y el preview.
+function applySkin(skin) {
+  currentSkin = SKINS[skin] ? skin : 'retro';
+  if (skinSelect) skinSelect.value = currentSkin;
+  localStorage.setItem('tetris.skin', currentSkin);
+  draw();
+  drawNext();
+}
+
 restartBtn.addEventListener('click', init);
 
 themeBtn.addEventListener('click', () => {
   applyTheme(document.body.classList.contains('light') ? 'dark' : 'light');
 });
 
+skinSelect.addEventListener('change', () => {
+  applySkin(skinSelect.value);
+});
+
 applyTheme(localStorage.getItem('theme') || 'dark');
 
 init();
+
+applySkin(localStorage.getItem('tetris.skin') || 'retro');
