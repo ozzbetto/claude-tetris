@@ -75,6 +75,11 @@ const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeBtn = document.getElementById('theme-btn');
+const pauseMenu = document.getElementById('pause-menu');
+const resumeBtn = document.getElementById('resume-btn');
+const controlsToggleBtn = document.getElementById('controls-toggle-btn');
+const pauseControlsList = document.getElementById('pause-controls-list');
+const startLevelSelect = document.getElementById('start-level-select');
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
 // Flag: si es true, el próximo spawn entrega la pieza 1×1 de recompensa (tras Tetris).
@@ -288,6 +293,7 @@ function endGame() {
   cancelAnimationFrame(animId);
   overlayTitle.textContent = 'GAME OVER';
   overlayScore.textContent = `Puntuación: ${score.toLocaleString()}`;
+  pauseMenu.classList.add('hidden'); // el menú de pausa no aplica en game over
   overlay.classList.remove('hidden');
 }
 
@@ -295,12 +301,15 @@ function togglePause() {
   if (gameOver) return;
   paused = !paused;
   if (!paused) {
+    pauseMenu.classList.add('hidden');
+    overlay.classList.add('hidden');
     lastTime = performance.now();
     loop(lastTime);
   } else {
     cancelAnimationFrame(animId);
     overlayTitle.textContent = 'PAUSA';
     overlayScore.textContent = '';
+    pauseMenu.classList.remove('hidden');
     overlay.classList.remove('hidden');
   }
 }
@@ -322,27 +331,37 @@ function loop(ts) {
   animId = requestAnimationFrame(loop);
 }
 
+// Lee el nivel inicial guardado en localStorage (clave 'tetris.startLevel').
+// Devuelve un entero entre 1 y 10; si no hay valor válido guardado, devuelve 1.
+function getStartLevel() {
+  const stored = parseInt(localStorage.getItem('tetris.startLevel'), 10);
+  return (stored >= 1 && stored <= 10) ? stored : 1;
+}
+
 function init() {
   board = createBoard();
   score = 0;
   lines = 0;
-  level = 1;
+  level = getStartLevel();
   paused = false;
   gameOver = false;
   pendingReward = false; // reinicia la recompensa de Tetris al comenzar o reiniciar
-  dropInterval = 1000;
+  dropInterval = Math.max(100, 1000 - (level - 1) * 90);
   dropAccum = 0;
   lastTime = performance.now();
   next = randomPiece();
   spawn();
   updateHUD();
   overlay.classList.add('hidden');
+  pauseMenu.classList.add('hidden');
+  pauseControlsList.classList.add('hidden');
+  controlsToggleBtn.textContent = 'Ver controles';
   cancelAnimationFrame(animId);
   animId = requestAnimationFrame(loop);
 }
 
 document.addEventListener('keydown', e => {
-  if (e.code === 'KeyP') { togglePause(); return; }
+  if (e.code === 'KeyP' || e.code === 'Escape') { togglePause(); return; }
   if (paused || gameOver) return;
   switch (e.code) {
     case 'ArrowLeft':
@@ -383,6 +402,20 @@ themeBtn.addEventListener('click', () => {
   applyTheme(document.body.classList.contains('light') ? 'dark' : 'light');
 });
 
+resumeBtn.addEventListener('click', () => {
+  if (paused) togglePause();
+});
+
+controlsToggleBtn.addEventListener('click', () => {
+  const nowHidden = pauseControlsList.classList.toggle('hidden');
+  controlsToggleBtn.textContent = nowHidden ? 'Ver controles' : 'Ocultar controles';
+});
+
+startLevelSelect.addEventListener('change', () => {
+  localStorage.setItem('tetris.startLevel', startLevelSelect.value);
+});
+
 applyTheme(localStorage.getItem('theme') || 'dark');
+startLevelSelect.value = String(getStartLevel());
 
 init();
