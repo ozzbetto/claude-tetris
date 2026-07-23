@@ -146,6 +146,38 @@ kbd {
   transition: background 0.2s, border-color 0.2s, color 0.2s;
 }
 
+/* ---- Selector de skin ---- */
+#skin-select {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  width: 100%;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+#skin-select:hover {
+  background: var(--border);
+}
+
+/* ---- Fondos específicos por skin (independientes del tema claro/oscuro) ---- */
+body.skin-neon #board,
+body.skin-neon #next-canvas {
+  background: #050507;
+  border-color: #133;
+}
+
+body.skin-pastel #board,
+body.skin-pastel #next-canvas {
+  background: #fdfaf5;
+  border-color: #e8ddd0;
+}
+
 /* ---- Theme button ---- */
 #theme-btn {
   background: var(--surface);

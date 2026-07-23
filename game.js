@@ -55,6 +55,28 @@ const PIECES = [
 
 const LINE_SCORES = [0, 100, 300, 500, 800];
 
+// --- Skins visuales ---
+// Cada skin define su propia paleta (mismos índices que COLORS) más flags
+// que drawBlock() usa para decidir cómo pintar cada bloque.
+const NEON_COLORS = [
+  null,
+  '#00e5ff', '#ffea00', '#e040fb', '#00e676', '#ff1744', '#2979ff', '#ff9100',
+  '#18ffff', '#d500f9', '#69f0ae', '#ffff00', '#ff3d00',
+];
+
+const PASTEL_COLORS = [
+  null,
+  '#a8dadc', '#ffe8a3', '#d8b4e2', '#b8e0bb', '#f4a6a6', '#a9c6e8', '#f7cba4',
+  '#a3e4e8', '#cbb2e0', '#b5e8c0', '#fff3b0', '#f2b8b8',
+];
+
+const SKINS = {
+  retro:  { colors: COLORS,        rounded: false, glow: false, texture: false, hideGrid: false },
+  neon:   { colors: NEON_COLORS,   rounded: false, glow: true,  texture: false, hideGrid: true },
+  pastel: { colors: PASTEL_COLORS, rounded: true,  glow: false, texture: false, hideGrid: false },
+  pixel:  { colors: COLORS,        rounded: false, glow: false, texture: true,  hideGrid: false },
+};
+
 // --- Configuración de piezas especiales ---
 // Probabilidad de que aparezca una pieza de reto en lugar de una estándar (0–1).
 const CHALLENGE_RATE  = 0.05;
@@ -75,8 +97,11 @@ const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeBtn = document.getElementById('theme-btn');
+const skinSelect = document.getElementById('skin-select');
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+// Skin visual activa (clave de SKINS). Se lee dentro de drawBlock/drawGrid.
+let currentSkin = 'retro';
 // Flag: si es true, el próximo spawn entrega la pieza 1×1 de recompensa (tras Tetris).
 let pendingReward;
 
@@ -218,19 +243,78 @@ function updateHUD() {
   levelEl.textContent = level;
 }
 
+// Dibuja un pequeño patrón de damero semitransparente sobre el bloque,
+// para que la skin "Pixel art" lea como texturizada en lugar de plana.
+function drawPixelTexture(context, px, py, size) {
+  const step = (size - 2) / 4;
+  context.fillStyle = 'rgba(0,0,0,0.15)';
+  for (let i = 0; i < 4; i++) {
+    for (let j = 0; j < 4; j++) {
+      if ((i + j) % 2 === 0) {
+        context.fillRect(px + 1 + i * step, py + 1 + j * step, step, step);
+      }
+    }
+  }
+}
+
+// Path con esquinas redondeadas; usa roundRect si el navegador lo soporta,
+// si no cae a un rectángulo normal (sigue siendo válido, solo pierde el redondeo).
+function roundedRectPath(context, x, y, w, h, r) {
+  if (context.roundRect) {
+    context.beginPath();
+    context.roundRect(x, y, w, h, r);
+  } else {
+    context.beginPath();
+    context.rect(x, y, w, h);
+  }
+}
+
 function drawBlock(context, x, y, colorIndex, size, alpha) {
   if (!colorIndex) return;
-  const color = COLORS[colorIndex];
+  const skin = SKINS[currentSkin];
+  const color = skin.colors[colorIndex];
+  const px = x * size, py = y * size;
   context.globalAlpha = alpha ?? 1;
+
+  if (skin.glow) {
+    context.shadowBlur = size * 0.6;
+    context.shadowColor = color;
+  }
+
   context.fillStyle = color;
-  context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
+  if (skin.rounded) {
+    const r = Math.min(6, size * 0.2);
+    roundedRectPath(context, px + 1, py + 1, size - 2, size - 2, r);
+    context.fill();
+  } else {
+    context.fillRect(px + 1, py + 1, size - 2, size - 2);
+  }
+
+  // Resetear la sombra antes de seguir pintando (highlight/textura) para que
+  // el glow no se filtre a elementos que no deberían tenerlo.
+  if (skin.glow) {
+    context.shadowBlur = 0;
+  }
+
   // highlight
   context.fillStyle = 'rgba(255,255,255,0.12)';
-  context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
+  if (skin.rounded) {
+    const r = Math.min(3, size * 0.1);
+    roundedRectPath(context, px + 1, py + 1, size - 2, 4, r);
+    context.fill();
+  } else {
+    context.fillRect(px + 1, py + 1, size - 2, 4);
+  }
+
+  if (skin.texture) {
+    drawPixelTexture(context, px, py, size);
+  }
+
   context.globalAlpha = 1;
 }
 
 function drawGrid() {
+  if (SKINS[currentSkin].hideGrid) return;
   ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue('--grid').trim();
   ctx.lineWidth = 0.5;
   for (let c = 1; c < COLS; c++) {
@@ -377,12 +461,31 @@ function applyTheme(theme) {
   localStorage.setItem('theme', theme);
 }
 
+// Cambia la skin visual activa, la persiste y redibuja de inmediato
+// (sin esperar a que se mueva una pieza) si la partida ya empezó.
+function applySkin(skin) {
+  currentSkin = SKINS[skin] ? skin : 'retro';
+  document.body.classList.remove('skin-retro', 'skin-neon', 'skin-pastel', 'skin-pixel');
+  document.body.classList.add('skin-' + currentSkin);
+  if (skinSelect) skinSelect.value = currentSkin;
+  localStorage.setItem('tetris-skin', currentSkin);
+  if (current) {
+    draw();
+    drawNext();
+  }
+}
+
 restartBtn.addEventListener('click', init);
 
 themeBtn.addEventListener('click', () => {
   applyTheme(document.body.classList.contains('light') ? 'dark' : 'light');
 });
 
+if (skinSelect) {
+  skinSelect.addEventListener('change', () => applySkin(skinSelect.value));
+}
+
 applyTheme(localStorage.getItem('theme') || 'dark');
+applySkin(localStorage.getItem('tetris-skin') || 'retro');
 
 init();
