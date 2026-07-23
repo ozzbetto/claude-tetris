@@ -75,6 +75,16 @@ const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeBtn = document.getElementById('theme-btn');
+const gameoverBox = document.getElementById('gameover-box');
+const pauseBox = document.getElementById('pause-box');
+const resumeBtn = document.getElementById('resume-btn');
+const pauseRestartBtn = document.getElementById('pause-restart-btn');
+const controlsToggleBtn = document.getElementById('controls-toggle-btn');
+const pauseControls = document.getElementById('pause-controls');
+const startLevelSelect = document.getElementById('start-level-select');
+
+const MIN_START_LEVEL = 1;
+const MAX_START_LEVEL = 15;
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
 // Flag: si es true, el próximo spawn entrega la pieza 1×1 de recompensa (tras Tetris).
@@ -286,8 +296,18 @@ function drawNext() {
 function endGame() {
   gameOver = true;
   cancelAnimationFrame(animId);
+  pauseBox.classList.add('hidden');
+  gameoverBox.classList.remove('hidden');
   overlayTitle.textContent = 'GAME OVER';
   overlayScore.textContent = `Puntuación: ${score.toLocaleString()}`;
+  overlay.classList.remove('hidden');
+}
+
+// Muestra el menú de pausa (distinto del overlay de fin de partida).
+function showPauseMenu() {
+  gameoverBox.classList.add('hidden');
+  pauseControls.classList.add('hidden');
+  pauseBox.classList.remove('hidden');
   overlay.classList.remove('hidden');
 }
 
@@ -295,13 +315,12 @@ function togglePause() {
   if (gameOver) return;
   paused = !paused;
   if (!paused) {
+    overlay.classList.add('hidden');
     lastTime = performance.now();
     loop(lastTime);
   } else {
     cancelAnimationFrame(animId);
-    overlayTitle.textContent = 'PAUSA';
-    overlayScore.textContent = '';
-    overlay.classList.remove('hidden');
+    showPauseMenu();
   }
 }
 
@@ -322,15 +341,22 @@ function loop(ts) {
   animId = requestAnimationFrame(loop);
 }
 
+// Lee el nivel inicial persistido (1–15), validando el valor guardado.
+function getStartLevel() {
+  const v = parseInt(localStorage.getItem('startLevel'), 10);
+  return (Number.isInteger(v) && v >= MIN_START_LEVEL && v <= MAX_START_LEVEL) ? v : MIN_START_LEVEL;
+}
+
 function init() {
+  const startLevel = getStartLevel();
   board = createBoard();
   score = 0;
   lines = 0;
-  level = 1;
+  level = startLevel;
   paused = false;
   gameOver = false;
   pendingReward = false; // reinicia la recompensa de Tetris al comenzar o reiniciar
-  dropInterval = 1000;
+  dropInterval = Math.max(100, 1000 - (startLevel - 1) * 90);
   dropAccum = 0;
   lastTime = performance.now();
   next = randomPiece();
@@ -342,7 +368,7 @@ function init() {
 }
 
 document.addEventListener('keydown', e => {
-  if (e.code === 'KeyP') { togglePause(); return; }
+  if (e.code === 'KeyP' || e.code === 'Escape') { togglePause(); return; }
   if (paused || gameOver) return;
   switch (e.code) {
     case 'ArrowLeft':
@@ -381,6 +407,29 @@ restartBtn.addEventListener('click', init);
 
 themeBtn.addEventListener('click', () => {
   applyTheme(document.body.classList.contains('light') ? 'dark' : 'light');
+});
+
+// --- Menú de pausa ---
+resumeBtn.addEventListener('click', () => {
+  if (paused) togglePause();
+});
+
+pauseRestartBtn.addEventListener('click', init);
+
+controlsToggleBtn.addEventListener('click', () => {
+  pauseControls.classList.toggle('hidden');
+});
+
+// Rellena el selector de nivel inicial (1–15) y restaura el valor persistido.
+for (let i = MIN_START_LEVEL; i <= MAX_START_LEVEL; i++) {
+  const opt = document.createElement('option');
+  opt.value = i;
+  opt.textContent = i;
+  startLevelSelect.appendChild(opt);
+}
+startLevelSelect.value = getStartLevel();
+startLevelSelect.addEventListener('change', () => {
+  localStorage.setItem('startLevel', startLevelSelect.value);
 });
 
 applyTheme(localStorage.getItem('theme') || 'dark');
