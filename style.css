@@ -165,6 +165,38 @@ kbd {
   background: var(--border);
 }
 
+/* ---- Skin select ---- */
+#skin-select {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  width: 100%;
+  font-family: inherit;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+#skin-select:hover {
+  background: var(--border);
+}
+
+#skin-select:focus {
+  outline: 1px solid var(--accent);
+}
+
+/* ---- Skin: Neon ---- */
+/* Fondo negro en el tablero para que el efecto de glow resalte,
+   independiente del tema claro/oscuro de la página. */
+body.skin-neon #board,
+body.skin-neon #next-canvas {
+  background: #050508;
+}
+
 /* ---- Overlay ---- */
 .overlay {
   position: absolute;
