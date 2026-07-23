@@ -45,6 +45,16 @@
         <div class="panel-section">
           <button id="theme-btn">&#9728; LIGHT</button>
         </div>
+
+        <div class="panel-section highscores-section">
+          <span class="label">MEJORES PUNTUACIONES</span>
+          <ol id="highscores-list" class="highscores-list"></ol>
+          <div class="highscores-stats">
+            <span>Mejor combo: <strong id="best-combo">0</strong></span>
+            <span>Máx. líneas: <strong id="max-lines">0</strong></span>
+          </div>
+          <button id="reset-scores-btn">Reiniciar récords</button>
+        </div>
       </aside>
     </div>
 
@@ -52,6 +62,14 @@
       <div class="overlay-box">
         <p id="overlay-title">GAME OVER</p>
         <p id="overlay-score"></p>
+        <div id="overlay-name-entry" class="hidden">
+          <input id="overlay-name-input" type="text" maxlength="8" placeholder="AAA" />
+          <button id="overlay-save-btn">Guardar</button>
+        </div>
+        <div class="overlay-highscores">
+          <span class="label">MEJORES PUNTUACIONES</span>
+          <ol id="overlay-highscores-list" class="highscores-list"></ol>
+        </div>
         <button id="restart-btn">Reiniciar</button>
       </div>
     </div>

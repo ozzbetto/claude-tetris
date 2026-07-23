@@ -220,3 +220,115 @@ kbd {
 #restart-btn:hover {
   background: var(--accent-hover);
 }
+
+/* ---- High scores ---- */
+.highscores-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+}
+
+.highscores-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: var(--text-muted);
+}
+
+.highscores-list li.empty {
+  color: var(--label);
+  justify-content: center;
+}
+
+.highscores-list li.highlight {
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 700;
+}
+
+.highscores-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.highscores-stats strong {
+  color: var(--accent);
+}
+
+#reset-scores-btn {
+  background: var(--surface);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  width: 100%;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+#reset-scores-btn:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.overlay-highscores {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+  width: 220px;
+}
+
+.overlay-highscores .label {
+  text-align: center;
+}
+
+#overlay-name-entry {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+#overlay-name-entry.hidden {
+  display: none;
+}
+
+#overlay-name-input {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 14px;
+  font-family: 'Courier New', Courier, monospace;
+  width: 90px;
+  text-transform: uppercase;
+}
+
+#overlay-save-btn {
+  background: var(--accent);
+  color: var(--bg);
+  border: none;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 1px;
+  transition: background 0.15s;
+}
+
+#overlay-save-btn:hover {
+  background: var(--accent-hover);
+}

@@ -75,10 +75,23 @@ const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeBtn = document.getElementById('theme-btn');
+const highscoresListEl = document.getElementById('highscores-list');
+const overlayHighscoresListEl = document.getElementById('overlay-highscores-list');
+const bestComboEl = document.getElementById('best-combo');
+const maxLinesEl = document.getElementById('max-lines');
+const resetScoresBtn = document.getElementById('reset-scores-btn');
+const overlayNameEntry = document.getElementById('overlay-name-entry');
+const overlayNameInput = document.getElementById('overlay-name-input');
+const overlaySaveBtn = document.getElementById('overlay-save-btn');
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
 // Flag: si es true, el próximo spawn entrega la pieza 1×1 de recompensa (tras Tetris).
 let pendingReward;
+// --- High scores locales ---
+const HIGHSCORES_KEY = 'tetris-highscores';
+let highscores; // { scores: [{name, score}], bestCombo, maxLines }
+let comboStreak; // racha actual de locks consecutivos que despejan ≥1 línea (por partida)
+let scorePrompted; // evita mostrar el prompt de nombre más de una vez por game over
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
@@ -165,8 +178,101 @@ function clearLines() {
     dropInterval = Math.max(100, 1000 - (level - 1) * 90);
     // Tetris (4 líneas simultáneas) → recompensa: la próxima pieza es la 1×1.
     if (cleared === 4) pendingReward = true;
+    // Combo: racha de locks consecutivos que despejan ≥1 línea.
+    comboStreak++;
+    if (comboStreak > highscores.bestCombo) highscores.bestCombo = comboStreak;
+    if (cleared > highscores.maxLines) highscores.maxLines = cleared;
+    saveHighscores();
+    renderHighscoresStats();
     updateHUD();
+  } else {
+    comboStreak = 0;
   }
+}
+
+// --- Persistencia de high scores en localStorage ---
+function loadHighscores() {
+  try {
+    const raw = localStorage.getItem(HIGHSCORES_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        scores: Array.isArray(parsed.scores) ? parsed.scores : [],
+        bestCombo: parsed.bestCombo || 0,
+        maxLines: parsed.maxLines || 0,
+      };
+    }
+  } catch (e) {
+    // localStorage corrupto o inaccesible: empezar de cero
+  }
+  return { scores: [], bestCombo: 0, maxLines: 0 };
+}
+
+function saveHighscores() {
+  try {
+    localStorage.setItem(HIGHSCORES_KEY, JSON.stringify(highscores));
+  } catch (e) {
+    // almacenamiento no disponible: ignorar
+  }
+}
+
+// Determina si una puntuación entra al top 5 (menos de 5 entradas o supera la peor).
+function qualifiesForTop5(candidateScore) {
+  if (highscores.scores.length < 5) return true;
+  const worst = highscores.scores[highscores.scores.length - 1];
+  return candidateScore > worst.score;
+}
+
+function addHighscore(name, points) {
+  const cleanName = (name || '').trim().slice(0, 8).toUpperCase() || 'AAA';
+  const entry = { name: cleanName, score: points };
+  highscores.scores.push(entry);
+  highscores.scores.sort((a, b) => b.score - a.score);
+  highscores.scores = highscores.scores.slice(0, 5);
+  saveHighscores();
+  // Si quedó fuera del top 5 tras el recorte, devolvemos null.
+  return highscores.scores.includes(entry) ? entry : null;
+}
+
+// Renderiza la tabla de top 5 en un <ol> dado, resaltando opcionalmente una entrada.
+function renderHighscoresTable(listEl, highlightEntry) {
+  listEl.innerHTML = '';
+  if (highscores.scores.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'empty';
+    li.textContent = 'Sin registros';
+    listEl.appendChild(li);
+    return;
+  }
+  highscores.scores.forEach((entry, i) => {
+    const li = document.createElement('li');
+    const isHighlight = highlightEntry && entry === highlightEntry;
+    if (isHighlight) li.classList.add('highlight');
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = `${i + 1}. ${entry.name}`;
+    const scoreSpan = document.createElement('span');
+    scoreSpan.textContent = entry.score.toLocaleString();
+    li.appendChild(nameSpan);
+    li.appendChild(scoreSpan);
+    listEl.appendChild(li);
+  });
+}
+
+function renderHighscoresStats() {
+  bestComboEl.textContent = highscores.bestCombo;
+  maxLinesEl.textContent = highscores.maxLines;
+}
+
+function renderAllHighscores(highlightEntry) {
+  renderHighscoresTable(highscoresListEl, highlightEntry);
+  renderHighscoresTable(overlayHighscoresListEl, highlightEntry);
+  renderHighscoresStats();
+}
+
+function resetHighscores() {
+  highscores = { scores: [], bestCombo: 0, maxLines: 0 };
+  saveHighscores();
+  renderAllHighscores();
 }
 
 function ghostY() {
@@ -289,6 +395,25 @@ function endGame() {
   overlayTitle.textContent = 'GAME OVER';
   overlayScore.textContent = `Puntuación: ${score.toLocaleString()}`;
   overlay.classList.remove('hidden');
+
+  // Prompt de nombre solo una vez por game over, y solo si la puntuación clasifica.
+  if (!scorePrompted) {
+    scorePrompted = true;
+    if (score > 0 && qualifiesForTop5(score)) {
+      overlayNameEntry.classList.remove('hidden');
+      overlayNameInput.value = '';
+      overlayNameInput.focus();
+    } else {
+      overlayNameEntry.classList.add('hidden');
+    }
+  }
+  renderAllHighscores();
+}
+
+function saveScoreEntry() {
+  const savedEntry = addHighscore(overlayNameInput.value, score);
+  overlayNameEntry.classList.add('hidden');
+  renderAllHighscores(savedEntry);
 }
 
 function togglePause() {
@@ -333,6 +458,9 @@ function init() {
   dropInterval = 1000;
   dropAccum = 0;
   lastTime = performance.now();
+  comboStreak = 0;
+  scorePrompted = false;
+  overlayNameEntry.classList.add('hidden');
   next = randomPiece();
   spawn();
   updateHUD();
@@ -383,6 +511,16 @@ themeBtn.addEventListener('click', () => {
   applyTheme(document.body.classList.contains('light') ? 'dark' : 'light');
 });
 
+overlaySaveBtn.addEventListener('click', saveScoreEntry);
+overlayNameInput.addEventListener('keydown', e => {
+  if (e.code === 'Enter') saveScoreEntry();
+});
+
+resetScoresBtn.addEventListener('click', resetHighscores);
+
 applyTheme(localStorage.getItem('theme') || 'dark');
+
+highscores = loadHighscores();
+renderAllHighscores();
 
 init();
