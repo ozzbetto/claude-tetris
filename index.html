@@ -9,7 +9,22 @@
 <body>
   <div class="wrapper">
     <h1 class="game-title">TETRIS</h1>
-    <div class="game-container">
+
+    <div id="start-screen" class="start-screen">
+      <div id="start-records" class="records-wrap"></div>
+      <p id="start-alltime" class="alltime"></p>
+      <div class="start-actions">
+        <button id="start-btn">Presiona para empezar</button>
+        <button id="reset-scores-btn" class="secondary-btn">Resetear récords</button>
+        <div id="reset-confirm" class="reset-confirm hidden">
+          <span>¿Seguro?</span>
+          <button id="reset-yes-btn">Sí</button>
+          <button id="reset-no-btn">No</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="game-container hidden">
       <canvas id="board" width="300" height="600"></canvas>
 
       <aside class="panel">
@@ -52,6 +67,15 @@
       <div class="overlay-box">
         <p id="overlay-title">GAME OVER</p>
         <p id="overlay-score"></p>
+        <p id="overlay-stats"></p>
+
+        <div id="name-entry" class="name-entry hidden">
+          <input id="name-input" type="text" maxlength="12" placeholder="Tu nombre" autocomplete="off" />
+          <button id="save-score-btn">Guardar</button>
+        </div>
+
+        <div id="overlay-records" class="records-wrap"></div>
+
         <button id="restart-btn">Reiniciar</button>
       </div>
     </div>

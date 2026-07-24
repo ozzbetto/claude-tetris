@@ -76,9 +76,26 @@ const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeBtn = document.getElementById('theme-btn');
 
+const startScreen = document.getElementById('start-screen');
+const startBtn = document.getElementById('start-btn');
+const gameContainer = document.querySelector('.game-container');
+const startRecordsEl = document.getElementById('start-records');
+const startAlltimeEl = document.getElementById('start-alltime');
+const resetScoresBtn = document.getElementById('reset-scores-btn');
+const resetConfirm = document.getElementById('reset-confirm');
+const resetYesBtn = document.getElementById('reset-yes-btn');
+const resetNoBtn = document.getElementById('reset-no-btn');
+const overlayStats = document.getElementById('overlay-stats');
+const overlayRecordsEl = document.getElementById('overlay-records');
+const nameEntry = document.getElementById('name-entry');
+const nameInput = document.getElementById('name-input');
+const saveScoreBtn = document.getElementById('save-score-btn');
+
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
 // Flag: si es true, el próximo spawn entrega la pieza 1×1 de recompensa (tras Tetris).
 let pendingReward;
+// Combo: rachas de piezas consecutivas que despejan al menos una línea.
+let combo, maxCombo;
 
 function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
@@ -159,6 +176,8 @@ function clearLines() {
     }
   }
   if (cleared) {
+    combo++;
+    maxCombo = Math.max(maxCombo, combo);
     lines += cleared;
     score += (LINE_SCORES[cleared] || 0) * level;
     level = Math.floor(lines / 10) + 1;
@@ -166,6 +185,9 @@ function clearLines() {
     // Tetris (4 líneas simultáneas) → recompensa: la próxima pieza es la 1×1.
     if (cleared === 4) pendingReward = true;
     updateHUD();
+  } else {
+    // Una pieza se fijó sin despejar ninguna línea: se corta la racha de combo.
+    combo = 0;
   }
 }
 
@@ -283,12 +305,114 @@ function drawNext() {
       drawBlock(nextCtx, offX + c, offY + r, shape[r][c], NB);
 }
 
+// --- Tabla de récords locales (localStorage) ---
+const HS_KEY = 'tetris.highscores';
+const BEST_COMBO_KEY = 'tetris.bestCombo';
+const MAX_LINES_KEY = 'tetris.maxLines';
+
+function loadHighScores() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HS_KEY));
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHighScores(list) {
+  localStorage.setItem(HS_KEY, JSON.stringify(list));
+}
+
+function loadBestCombo() {
+  return parseInt(localStorage.getItem(BEST_COMBO_KEY), 10) || 0;
+}
+
+function saveBestCombo(value) {
+  localStorage.setItem(BEST_COMBO_KEY, String(value));
+}
+
+function loadMaxLines() {
+  return parseInt(localStorage.getItem(MAX_LINES_KEY), 10) || 0;
+}
+
+function saveMaxLines(value) {
+  localStorage.setItem(MAX_LINES_KEY, String(value));
+}
+
+function qualifiesForTopFive(sc) {
+  const list = loadHighScores();
+  return list.length < 5 || sc > list[list.length - 1].score;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function renderRecordsTable(container, highlightEntry) {
+  const list = loadHighScores();
+  if (!list.length) {
+    container.innerHTML = '<p class="records-empty">Sin récords todavía</p>';
+    return;
+  }
+  const rows = list.map((entry, i) => {
+    const isHighlight = !!highlightEntry &&
+      entry.name === highlightEntry.name &&
+      entry.score === highlightEntry.score &&
+      entry.lines === highlightEntry.lines &&
+      entry.combo === highlightEntry.combo;
+    return `<tr class="${isHighlight ? 'highlight' : ''}">
+      <td>${i + 1}</td>
+      <td>${escapeHtml(entry.name)}</td>
+      <td>${entry.score.toLocaleString()}</td>
+      <td>${entry.lines}</td>
+      <td>${entry.combo}</td>
+    </tr>`;
+  }).join('');
+  container.innerHTML = `
+    <table class="records-table">
+      <thead><tr><th>#</th><th>Nombre</th><th>Puntos</th><th>Líneas</th><th>Combo</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function renderAlltimeStats() {
+  startAlltimeEl.textContent = `Mejor combo: ${loadBestCombo()} · Máx. líneas: ${loadMaxLines()}`;
+}
+
+function saveScoreEntry(name) {
+  const list = loadHighScores();
+  const entry = { name: (name || 'Jugador').slice(0, 12), score, lines, combo: maxCombo };
+  list.push(entry);
+  list.sort((a, b) => b.score - a.score);
+  list.length = Math.min(list.length, 5);
+  saveHighScores(list);
+  return list.includes(entry) ? entry : null;
+}
+
 function endGame() {
   gameOver = true;
   cancelAnimationFrame(animId);
   overlayTitle.textContent = 'GAME OVER';
   overlayScore.textContent = `Puntuación: ${score.toLocaleString()}`;
+
+  const bestCombo = Math.max(loadBestCombo(), maxCombo);
+  saveBestCombo(bestCombo);
+  const bestLines = Math.max(loadMaxLines(), lines);
+  saveMaxLines(bestLines);
+
+  overlayStats.textContent = `Combo máximo: ${maxCombo} (récord: ${bestCombo}) · Líneas: ${lines} (récord: ${bestLines})`;
+
+  if (qualifiesForTopFive(score)) {
+    nameEntry.classList.remove('hidden');
+    nameInput.value = '';
+  } else {
+    nameEntry.classList.add('hidden');
+  }
+  renderRecordsTable(overlayRecordsEl, null);
   overlay.classList.remove('hidden');
+  if (qualifiesForTopFive(score)) nameInput.focus();
 }
 
 function togglePause() {
@@ -330,6 +454,8 @@ function init() {
   paused = false;
   gameOver = false;
   pendingReward = false; // reinicia la recompensa de Tetris al comenzar o reiniciar
+  combo = 0;
+  maxCombo = 0;
   dropInterval = 1000;
   dropAccum = 0;
   lastTime = performance.now();
@@ -383,6 +509,42 @@ themeBtn.addEventListener('click', () => {
   applyTheme(document.body.classList.contains('light') ? 'dark' : 'light');
 });
 
+startBtn.addEventListener('click', () => {
+  startScreen.classList.add('hidden');
+  gameContainer.classList.remove('hidden');
+  init();
+});
+
+saveScoreBtn.addEventListener('click', () => {
+  const entry = saveScoreEntry(nameInput.value.trim());
+  nameEntry.classList.add('hidden');
+  renderRecordsTable(overlayRecordsEl, entry);
+  renderRecordsTable(startRecordsEl, entry);
+  renderAlltimeStats();
+});
+
+nameInput.addEventListener('keydown', e => {
+  if (e.code === 'Enter') saveScoreBtn.click();
+});
+
+resetScoresBtn.addEventListener('click', () => {
+  resetConfirm.classList.remove('hidden');
+});
+
+resetNoBtn.addEventListener('click', () => {
+  resetConfirm.classList.add('hidden');
+});
+
+resetYesBtn.addEventListener('click', () => {
+  localStorage.removeItem(HS_KEY);
+  localStorage.removeItem(BEST_COMBO_KEY);
+  localStorage.removeItem(MAX_LINES_KEY);
+  resetConfirm.classList.add('hidden');
+  renderRecordsTable(startRecordsEl, null);
+  renderAlltimeStats();
+});
+
 applyTheme(localStorage.getItem('theme') || 'dark');
 
-init();
+renderRecordsTable(startRecordsEl, null);
+renderAlltimeStats();
